@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tipi-appstore tests",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["test"],
+      "port": 0
+    }
+  ]
+}
