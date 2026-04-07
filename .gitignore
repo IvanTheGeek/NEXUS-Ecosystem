@@ -1,4 +1,5 @@
 # NEXUS project directories — each has its own git repo
 # Add each new project directory here when it is created
 NEXUS-EventModeling/
+NEXUS-admin/
 tipi-appstore/
