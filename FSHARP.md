@@ -1,4 +1,4 @@
-> **Sync contract**: A condensed version of this document lives in the workspace `CLAUDE.md` under `## F#`. When this file is updated, update that section too.
+> **Sync contract**: A condensed version of this document lives in the workspace `AGENTS.md` under `## F#`. When this file is updated, update that section too.
 
 # F# Notes — Patterns, Learnings, and Scott Wlaschin's Influence
 
@@ -346,7 +346,33 @@ Validate at system entry points: user input, API requests, file imports. Inside 
 **Cause**: F# 5+ CE `BindReturn` optimization — `property { let! x = gen; return bool }` produces `Property<bool>`, not `Property<unit>`. `Property.check` expects `Property<unit>`
 **Fix**: Use `Property.checkBool` instead of `Property.check` when the property body ends with `return bool`
 
+### Error: `Type constraint mismatch. The type 'Property<unit>' is not compatible with type 'Property<bool>'` — `for` loop inside `property { }`
+**Context**: `property { let! n = gen; for _ in 1..n do sideEffect(); return bool }`
+**Cause**: A `for` loop inside a `property { }` CE is desugared into CE `For` bindings that produce `Property<unit>`. The compiler then cannot reconcile the trailing `return bool` with the `Property<unit>` already in scope.
+**Fix**: Replace the `for` loop with `List.init n (fun _ -> sideEffect())` bound to `_`. `List.init` is eager, runs all side effects, and is a plain F# expression — invisible to the CE:
+```fsharp
+// Wrong
+property { let! n = gen; for _ in 1..n do store.Append sid [e] |> run |> ignore; return bool }
+
+// Right
+property { let! n = gen; let _ = List.init n (fun _ -> store.Append sid [e] |> run); return bool }
+```
+
 ### Error: `The type 'Gen<_>' does not define the field, constructor or member 'Sample'`
 **Context**: Calling `.Sample(...)` on a CsCheck `Gen<T>` value
 **Cause**: `Sample` is a static method on `CsCheck.Check`, not an instance method on `Gen<T>`
 **Fix**: `Check.Sample(gen, fun n -> ...)` with `open CsCheck`
+
+### Error: `NotSupportedException: Deserialization of types without a parameterless constructor` — `[<CLIMutable>]` on private nested type
+**Context**: `type private MyDto = { ... }` with `[<CLIMutable>]` inside a module, deserialized with `System.Text.Json`
+**Cause**: `private` nested types are not visible enough for STJ's reflection-based deserialization, even with `[<CLIMutable>]`
+**Fix**: Remove `private` from the type declaration. The type is still module-scoped; `private` only prevents STJ from instantiating it via reflection.
+```fsharp
+// Wrong — STJ cannot deserialize
+[<CLIMutable>]
+type private MyDto = { Field: string }
+
+// Right — STJ can instantiate
+[<CLIMutable>]
+type MyDto = { Field: string }
+```
