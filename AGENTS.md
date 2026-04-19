@@ -12,12 +12,14 @@
 |---|---|
 | **NEXUS-EventModeling** | F# vocabulary — Actor, Command, Event, View, Slice, GWT; the Event Model lens in library form |
 | **NEXUS-STRATUM** | Event persistence — `IEventStore` with pluggable backends (InMemory, FileSystem, Dropbox, etc.) |
-| **NEXUS-FnHCI** | Universal HCI abstraction — adapters for HTML, Blazor (.NET 10), TUI, LCD, mobile, desktop, etc. |
 | **NEXUS-LOGOS** | NEXUS knowledge base — principles, ADRs, concept definitions, methodology docs |
 | **NEXUS-ATLAS** | Modeling workspace — applies lenses to Truth Graph → Spec; renders event timelines |
 | **NEXUS-FORGE** | Language-agnostic code generator — Spec + lenses → F#, JS, C++, Rust, or any target |
 | **CORTEX** | External AI layer — Claude, GPT, Gemini; reads LOGOS, drives ATLAS sessions, runs FORGE |
 | **NEXUS-admin** | Workspace scaffolding — templates, checklists, new-project bootstrap |
+| **FnHCI** _(FnTools)_ | Universal HCI abstraction — `FnTools.FnHCI` / `FnTools.FnHCI.UI` / `FnTools.FnHCI.UI.Blazor`; external brand (`FnTools.online`); NEXUS and app projects consume it as a dependency |
+
+**FnTools** (`FnTools.online`) is a separate brand for technical/developer-facing tooling — orthogonal to NEXUS and Cheddar. Family: FnHCI (UI), FnCLI, FnAPI, FnA11y, FnMCP. Repo: `IvanTheGeek/FnTools`. Full reference: `NEXUS-LOGOS/docs/methods/fnhci.md`
 
 **Truth Graph** is the real Source of Truth — a lens-independent graph of facts built from LOGOS records. The Event Model is one lens applied to it; FnHCI targets and API contracts are other lenses. Full pipeline: `NEXUS-LOGOS/docs/architecture/pipeline.md`
 
