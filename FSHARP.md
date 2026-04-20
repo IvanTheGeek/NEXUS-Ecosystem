@@ -171,7 +171,7 @@ OccurredAt = DateTimeOffset.UtcNow   // correct
 OccurredAt = DateTime.UtcNow         // wrong type
 ```
 
-In EventModeling GWT example data, use `DateTimeOffset.MinValue` as a sentinel — it signals "this timestamp is example data, not a real occurrence time." Test adapters strip `OccurredAt` before comparing events.
+In Nexus.Modeling GWT example data, use `DateTimeOffset.MinValue` as a sentinel — it signals "this timestamp is example data, not a real occurrence time." Test adapters strip `OccurredAt` before comparing events.
 
 ---
 
@@ -233,9 +233,9 @@ Gen.map    f gen                            // transform output
 gen { let! x = gen1; let! y = gen2; return ... }  // compose generators
 ```
 
-**Generators for EventModeling types**
+**Generators for Nexus.Modeling types**
 
-`EventModeling.Testing.Generators` provides ready-made generators for `Actor`, `ActorKind`, `Event<'T>`, `Command<'T>`, and `View<'T>`. Use these in consuming project tests rather than rewriting them.
+`Nexus.Modeling.Testing.Generators` provides ready-made generators for `Actor`, `ActorKind`, `Event<'T>`, `Command<'T>`, and `View<'T>`. Use these in consuming project tests rather than rewriting them.
 
 **When to use Hedgehog**
 - Invariants that must hold for all inputs (e.g. "event name is never empty")
@@ -274,6 +274,96 @@ testCase "label" <| fun () ->
 - When a failing Hedgehog case doesn't shrink to a readable minimal example
 - When you need a generator for a complex .NET type that Hedgehog doesn't cover
 - When regression replay (the persisted seed file) is important for CI stability
+
+---
+
+## TOML Serialization — Custom Flat Parser Pattern
+
+NEXUS projects use human-readable TOML for event storage (STRATUM FileSystem and OPFS backends). There is no external TOML library dependency — a minimal custom writer and flat parser are sufficient for the known schema.
+
+### Write path — manual string building
+
+```fsharp
+let private tomlStr (s: string) =
+    let escaped = s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+    $"\"{escaped}\""
+
+let private decToStr (d: decimal) = d.ToString(CultureInfo.InvariantCulture)
+```
+
+Build lines into a `ResizeArray<string>` or list, then `String.concat "\n" lines + "\n"`. Omit optional fields when `None` — do not write a null or empty placeholder.
+
+### Read path — flat key-value parser
+
+```fsharp
+let private parseToml (text: string) : Map<string, string> =
+    text.Split([| '\n'; '\r' |], StringSplitOptions.RemoveEmptyEntries)
+    |> Array.choose (fun line ->
+        let line = line.Trim()
+        if line = "" || line.StartsWith('#') || line.StartsWith('[') then None
+        else
+            let eq = line.IndexOf(" = ")
+            if eq = -1 then None
+            else
+                let key = line.[..eq - 1].Trim()
+                let raw = line.[eq + 3..].Trim()
+                let value =
+                    if raw.StartsWith('"') && raw.EndsWith('"') && raw.Length >= 2 then
+                        raw.[1..raw.Length - 2]
+                            .Replace("\\\"", "\"")
+                            .Replace("\\\\", "\\")
+                    else raw
+                Some (key, value))
+    |> Map.ofArray
+```
+
+On read, use `Map.tryFind` for optional fields — absence means `None`.
+
+### Decimal values
+
+TOML has no decimal type (only float). Store decimals as quoted TOML strings with `CultureInfo.InvariantCulture` to guarantee `.` as the decimal separator regardless of system locale:
+
+```fsharp
+lines.Add $"LineTotal = {tomlStr (d.ToString(CultureInfo.InvariantCulture))}"
+// read back:
+Decimal.Parse(m["LineTotal"], CultureInfo.InvariantCulture)
+```
+
+### Option fields
+
+Omit on write; detect by key presence on read:
+
+```fsharp
+// write
+e.Quantity |> Option.iter (fun q -> lines.Add $"Quantity = {q}")
+// read
+Quantity = Map.tryFind "Quantity" m |> Option.map int
+```
+
+### `[data]` section in STRATUM TOML files
+
+STRATUM's FileSystem and OPFS backends embed the event payload (UTF-8 TOML text produced by the domain layer) as a `[data]` section at the end of the envelope file:
+
+```
+event_id   = "..."
+event_type = "..."
+...
+
+[data]
+Location = "Love's #123"
+LineTotal = "3.00"
+```
+
+Split on the `"\n[data]\n"` sentinel to separate envelope header from data:
+
+```fsharp
+let dataSep    = "\n[data]\n"
+let sepIdx     = text.IndexOf(dataSep)
+let headerText = if sepIdx = -1 then text else text.[..sepIdx - 1]
+let dataText   = if sepIdx = -1 then ""   else text.[sepIdx + dataSep.Length..]
+```
+
+**Constraint**: `Data` bytes must be valid UTF-8 text. This is always satisfied because the domain serialization layer (e.g. `expenseToBytes`) produces UTF-8 TOML. Arbitrary binary data will not survive the round-trip in these backends.
 
 ---
 
@@ -362,6 +452,19 @@ property { let! n = gen; let _ = List.init n (fun _ -> store.Append sid [e] |> r
 **Context**: Calling `.Sample(...)` on a CsCheck `Gen<T>` value
 **Cause**: `Sample` is a static method on `CsCheck.Check`, not an instance method on `Gen<T>`
 **Fix**: `Check.Sample(gen, fun n -> ...)` with `open CsCheck`
+
+### Error: `FS3373: Invalid interpolated string. Single quote or verbatim string literals may not be used in interpolated expressions`
+**Context**: Using a string literal inside an `$"..."` interpolated string, e.g. `$"occurred_at = {tomlStr (now.ToString("O"))}"`
+**Cause**: F# does not allow `"..."` string literals inside `$"..."` interpolated expressions — the inner quotes terminate the outer string
+**Fix**: Extract the inner expression to a `let` binding before the interpolated string:
+```fsharp
+// Wrong — inner "O" terminates the outer interpolated string
+$"occurred_at = {tomlStr (now.ToString("O"))}"
+
+// Right — extract to a let binding first
+let occurredAt = now.ToString("O")
+$"occurred_at = {tomlStr occurredAt}"
+```
 
 ### Error: `NotSupportedException: Deserialization of types without a parameterless constructor` — `[<CLIMutable>]` on private nested type
 **Context**: `type private MyDto = { ... }` with `[<CLIMutable>]` inside a module, deserialized with `System.Text.Json`

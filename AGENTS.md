@@ -1,7 +1,7 @@
 # Nexus Workspace
 
 > Sync contracts:
-> - When `FSHARP.md` or `NEXUS-EventModeling/EVENT_MODELING.md` is updated → update the corresponding condensed section in this file
+> - When `FSHARP.md` or `NEXUS-Modeling/MODELING.md` is updated → update the corresponding condensed section in this file
 > - When `NEXUS-LOGOS/docs/methods/paths.md` is updated → update `## PATHs` in this file
 
 ## NEXUS Components
@@ -10,7 +10,7 @@
 
 | Component | Role |
 |---|---|
-| **NEXUS-EventModeling** | F# vocabulary — Actor, Command, Event, View, Slice, GWT; the Event Model lens in library form |
+| **NEXUS-Modeling** | F# vocabulary — Actor, Command, Event, View, Slice, GWT; the Event Model lens in library form (`Nexus.Modeling` / `Nexus.Modeling.Testing`) |
 | **NEXUS-STRATUM** | Event persistence — `IEventStore` with pluggable backends (InMemory, FileSystem, Dropbox, etc.) |
 | **NEXUS-LOGOS** | NEXUS knowledge base — principles, ADRs, concept definitions, methodology docs |
 | **NEXUS-ATLAS** | Modeling workspace — applies lenses to Truth Graph → Spec; renders event timelines |
@@ -37,6 +37,11 @@ When working with any external library or tool:
 - All projects live under /home/ivan/nexus/
 - Each project is a subdirectory
 - Language: F# on .NET 10.0 across all projects
+
+## Editing Practices
+
+- **Inspect → change → verify**: always read the actual current state before editing; never assume or guess what is there
+- **Cross-file renames / string replacements**: grep the full tree first to find every occurrence; apply changes to all matching files at once — never hand-pick file lists; grep again after to confirm zero remaining occurrences
 
 ## Git Workflow
 
@@ -68,7 +73,7 @@ When working with any external library or tool:
 
 ## Event Modeling
 
-> Condensed from `NEXUS-EventModeling/EVENT_MODELING.md`. Update that file AND this file (`AGENTS.md`) together.
+> Condensed from `NEXUS-Modeling/MODELING.md`. Update that file AND this file (`AGENTS.md`) together.
 
 - **Actor**: source of decisions and actions — `Human of role`, `Automation of name`, `ExternalSystem of name`
 - **Command**: intent expressed by an Actor; handled by a hidden pure CommandHandler; blue box
@@ -115,8 +120,17 @@ When working with any external library or tool:
 - `Result<'T, string>` for failures; the string is a business rule violation message
 - Single-case DUs wrap primitives to prevent mixing incompatible IDs (e.g. `CustomerId of int`)
 
+**TOML serialization (STRATUM backends)**
+- No external TOML library — custom write (manual string building) + flat key-value parser (`Map<string,string>`)
+- Escape strings: `s.Replace("\\", "\\\\").Replace("\"", "\\\"")` wrapped in `"..."` for TOML basic strings
+- Decimals stored as quoted TOML strings with `CultureInfo.InvariantCulture` — TOML has no decimal type
+- Optional fields: omit on write; `Map.tryFind` on read (absence = `None`)
+- `[data]` section embeds UTF-8 TOML payload; split on `"\n[data]\n"` sentinel to separate envelope from data
+- `Data` bytes must be valid UTF-8 text — arbitrary binary does not survive the round-trip in TOML backends
+- String literal inside `$"..."` interpolation causes `FS3373` — extract to a `let` binding first
+
 **Testing — Expecto + Hedgehog + CsCheck**
-- Full stack ships with `EventModeling.Testing` — reference it to get all three
+- Full stack ships with `Nexus.Modeling.Testing` — reference it to get all three
 - `testCase "label" <| fun () -> ...` — idiomatic Expecto; `<|` avoids nested parens
 - `testList "name" [...]` — groups tests; `runTestsWithCLIArgs [] args allTests` — entry point
 - Hedgehog: `property { let! x = gen; return bool }` + `Property.checkBool` inside `testCase`
